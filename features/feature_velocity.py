@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 
 # 1. Load Data
-conn = sqlite3.connect('finguard.db')
+conn = sqlite3.connect('data/finguard.db')
 df = pd.read_sql("SELECT * FROM transactions WHERE user_id = 1", conn)
 conn.close()
 

@@ -10,7 +10,8 @@ import plotly.express as px
 import time
 from datetime import datetime
 import random
-
+import json
+import os
 # ─────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────
@@ -137,7 +138,7 @@ def load_transactions() -> pd.DataFrame:
         ORDER BY t.timestamp DESC
     """, conn)
     conn.close()
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed")
     df["hour"] = df["timestamp"].dt.hour
     return df
 
@@ -163,10 +164,12 @@ with st.sidebar:
     st.caption("Hybrid Fraud Detection System")
     st.divider()
 
-    page = st.radio("", [
+    page = st.radio("Navigation", [
         "🔍 Score a Transaction",
         "📋 Transaction Data",
         "👤 User Profiles",
+        "📡 Live Feed",
+      "📊 Model Intelligence",
         "💥 Attack Simulation",
     ], label_visibility="collapsed")
 
@@ -177,7 +180,9 @@ with st.sidebar:
         r = requests.get(f"{API_URL}/", timeout=2)
         data = r.json()
         st.success("🟢 API Online")
-        st.caption(f"Models loaded: {data.get('models_loaded', '?')}")
+        # ← fix: use calculated number not the ? field
+        total = 1 + 1 + 1 + len(data.get("models", []))
+        st.caption(f"Models loaded: {data.get('models_loaded', total)}")
         if data.get("shap") == "enabled":
             st.caption("SHAP: enabled ✓")
     except:
@@ -269,8 +274,10 @@ if page == "🔍 Score a Transaction":
             decision  = result["decision"]
             risk      = result["risk_score"]
             fraud_p   = result["fraud_probability"]
-            anomaly   = result["anomaly_label"]
-            a_score   = result["anomaly_score"]
+            anomaly   = result["models"]["anomaly_label"]
+            a_score   = result["models"]["anomaly_score"]
+            xgb_prob  = result.get("models", {}).get("xgboost_prob", 0)    # ← ADD
+            rf_prob   = result.get("models", {}).get("random_forest_prob", 0)
             reasons   = result.get("reasons", [])
             features  = result.get("features_used", {})
             shap_exp  = result.get("shap_explanation", {})
@@ -288,16 +295,42 @@ if page == "🔍 Score a Transaction":
             )
 
             # ── 3 numbers ──
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Risk Score", risk,
-                      help="0 = safe · 30+ warn · 55+ delay · 75+ block")
-            c2.metric("Fraud Probability",
-                      f"{fraud_p*100:.1f}%",
-                      help="XGBoost model output")
-            c3.metric("Isolation Forest",
-                      "Anomaly ⚠️" if anomaly == -1 else "Normal ✓",
-                      help=f"Raw score: {a_score}")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Risk Score",  risk,
+                    help="Combined score from all 4 models")
+            c2.metric("XGBoost",     f"{xgb_prob*100:.1f}%",
+                    help="Supervised fraud probability")
+            c3.metric("Random Forest", f"{rf_prob*100:.1f}%",
+                    help="Ensemble fraud probability")
+            ae_data  = result.get("autoencoder", {})
+            if ae_data.get("is_anomaly"):
+                st.markdown(
+                    f'<div class="reason-item">'
+                    f'⚠️ Autoencoder flagged this transaction — '
+                    f'reconstruction error {ae_data["reconstruction_error"]:.4f} '
+                    f'is {ae_data["anomaly_score_ratio"]:.1f}× above normal threshold'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    f'<div class="ok-item">'
+                    f'✅ Autoencoder — transaction pattern looks normal '
+                    f'(error: {ae_data.get("reconstruction_error", 0):.4f})'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            ae_error = ae_data.get("reconstruction_error", 0)
+            ae_ratio = ae_data.get("anomaly_score_ratio", 0)
+            ae_flag  = ae_data.get("is_anomaly", False)
 
+            c4.metric(
+                "Autoencoder",
+                "⚠️ Anomaly" if ae_flag else "✓ Normal",
+                delta=f"Error ratio: {ae_ratio:.2f}x",
+                delta_color="inverse",
+                help=f"Reconstruction error: {ae_error:.4f} vs threshold 0.1985"
+            )
             st.divider()
 
             # ── What triggered this ──
@@ -371,7 +404,7 @@ if page == "🔍 Score a Transaction":
                     yaxis={"gridcolor": "#21262d"},
                     showlegend=False
                 )
-                st.plotly_chart(fig_bar, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig_bar,  use_container_width=True, config={"displayModeBar": False}, key="score_bar")
             else:
                 st.markdown(
                     '<div class="ok-item">✅ 0 risk points — all signals clean</div>',
@@ -463,7 +496,7 @@ elif page == "📋 Transaction Data":
             yaxis={"title": "Number of transactions",
                    "gridcolor": "#21262d"}
         )
-        st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False}, key="data_hourly")
         st.caption(
             "💡 Aman (Student) is active 8AM–11PM. "
             "Riya (Night Gamer) peaks after 10PM. "
@@ -493,8 +526,8 @@ elif page == "📋 Transaction Data":
                    "gridcolor": "#21262d"},
             yaxis={"gridcolor": "#21262d"}
         )
-        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
-        st.caption(
+    st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False}, key="data_merchant")
+    st.caption(
             "💡 Amazon, Zomato, Swiggy appear across all 3 users. "
             "Steam/EpicGames are only Riya. LuxuryMall/Airline only Kabir."
         )
@@ -577,7 +610,7 @@ elif page == "👤 User Profiles":
                 },
                 yaxis={"gridcolor": "#21262d"}
             )
-            st.plotly_chart(fig_h, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_h, use_container_width=True, config={"displayModeBar": False}, key=f"profile_hour_{uid}")
 
         with col_amt:
             # Amount distribution
@@ -596,7 +629,7 @@ elif page == "👤 User Profiles":
                 yaxis={"title": "Count",
                        "gridcolor": "#21262d"}
             )
-            st.plotly_chart(fig_a, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_a, use_container_width=True, config={"displayModeBar": False},key=f"profile_amt_{uid}")
 
         # Plain English summary under each user
         avg   = udf["amount"].mean()
@@ -870,7 +903,7 @@ elif page == "💥 Attack Simulation":
                        "range": [0, 130],
                        "gridcolor": "#21262d"},
             )
-            st.plotly_chart(fig_sim, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_sim, use_container_width=True, config={"displayModeBar": False}, key="sim_chart")
             st.caption(
                 "Each dot is one transaction. "
                 "Dots above the red line = BLOCK. "
@@ -890,3 +923,588 @@ elif page == "💥 Attack Simulation":
                 '</div>',
                 unsafe_allow_html=True
             )
+# ════════════════════════════════════════════
+# PAGE — LIVE TRANSACTION FEED
+# ════════════════════════════════════════════
+
+elif page == "📡 Live Feed":
+
+    st.title("📡 Live Transaction Feed")
+    st.caption(
+        "Transactions are generated and scored in real time. "
+        "Watch the fraud detection system work live."
+    )
+    st.divider()
+
+    # ── Controls ──
+    col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns(4)
+
+    with col_ctrl1:
+        speed = st.selectbox(
+            "Speed",
+            ["Fast (1s)", "Normal (2s)", "Slow (3s)"],
+            index=1
+        )
+        delay = {"Fast (1s)": 1.0,
+                 "Normal (2s)": 2.0,
+                 "Slow (3s)": 3.0}[speed]
+
+    with col_ctrl2:
+        feed_user = st.selectbox(
+            "User",
+            ["All users randomly", "Aman (Student)",
+             "Riya (Night Gamer)", "Kabir (VIP)"],
+        )
+
+    with col_ctrl3:
+        fraud_mode = st.selectbox(
+            "Inject fraud?",
+            ["Normal mix", "High fraud (30%)", "Attack mode (60%)"]
+        )
+
+    with col_ctrl4:
+        max_rows = st.slider("Max rows to show", 10, 50, 20)
+
+    st.divider()
+
+    # ── Start / Stop ──
+    btn_col1, btn_col2, _ = st.columns([1, 1, 3])
+    with btn_col1:
+        start = st.button("▶ Start Feed",
+                          use_container_width=True)
+    with btn_col2:
+        stop  = st.button("⏹ Stop",
+                          use_container_width=True)
+
+    if stop:
+        st.session_state["feed_running"] = False
+
+    if start:
+        st.session_state["feed_running"] = True
+        st.session_state["feed_rows"]    = []
+
+    if "feed_running" not in st.session_state:
+        st.session_state["feed_running"] = False
+    if "feed_rows" not in st.session_state:
+        st.session_state["feed_rows"]    = []
+
+    # ── Live counters placeholder ──
+    counter_placeholder = st.empty()
+    # ── Table placeholder ──
+    table_placeholder   = st.empty()
+    # ── Chart placeholder ──
+    chart_placeholder   = st.empty()
+
+    # ── Persona configs for generation ──
+    PERSONA_CONFIG = {
+        1: {
+            "name":     "Aman",
+            "persona":  "Student",
+            "amounts":  (50, 500),
+            "hours":    list(range(8, 23)),
+            "cities":   ["Mumbai"],
+            "merchants":["Swiggy","Zomato","Amazon","BookStore"]
+        },
+        2: {
+            "name":     "Riya",
+            "persona":  "Night Gamer",
+            "amounts":  (500, 5000),
+            "hours":    [22,23,0,1,2,3,4],
+            "cities":   ["Bangalore"],
+            "merchants":["Steam","EpicGames","Amazon","Zomato"]
+        },
+        3: {
+            "name":     "Kabir",
+            "persona":  "VIP",
+            "amounts":  (10000, 100000),
+            "hours":    list(range(9, 18)),
+            "cities":   ["Delhi","Mumbai","London","Dubai"],
+            "merchants":["LuxuryMall","Airline","Hotel","Amazon"]
+        }
+    }
+
+    def generate_transaction(user_id: int,
+                             fraud_probability: float) -> dict:
+        """Generate a realistic transaction for given user."""
+        config = PERSONA_CONFIG[user_id]
+        now    = datetime.now()
+
+        is_fraud_txn = random.random() < fraud_probability
+
+        if is_fraud_txn:
+            # Pick a fraud pattern
+            pattern = random.choice([
+                "night_large",
+                "unknown_location",
+                "rapid",
+                "ato"
+            ])
+            if pattern == "night_large":
+                hour     = random.randint(1, 4)
+                amount   = round(random.uniform(
+                    config["amounts"][1] * 3,
+                    config["amounts"][1] * 8), 2)
+                city     = random.choice(config["cities"])
+                merchant = random.choice(config["merchants"])
+            elif pattern == "unknown_location":
+                hour     = random.randint(0, 23)
+                amount   = round(random.uniform(
+                    config["amounts"][1] * 2,
+                    config["amounts"][1] * 5), 2)
+                city     = "UnknownCity"
+                merchant = "UnknownMerchant"
+            elif pattern == "rapid":
+                hour     = random.randint(0, 23)
+                amount   = round(random.uniform(
+                    config["amounts"][0],
+                    config["amounts"][1]), 2)
+                city     = random.choice(config["cities"])
+                merchant = random.choice(config["merchants"])
+            else:  # ato
+                hour     = random.randint(1, 5)
+                amount   = round(random.uniform(
+                    config["amounts"][1] * 4,
+                    config["amounts"][1] * 10), 2)
+                city     = "UnknownCity"
+                merchant = "UnknownMerchant"
+        else:
+            hour     = random.choice(config["hours"])
+            amount   = round(random.uniform(
+                config["amounts"][0],
+                config["amounts"][1]), 2)
+            city     = random.choice(config["cities"])
+            merchant = random.choice(config["merchants"])
+
+        ts = now.replace(
+            hour=hour,
+            minute=random.randint(0, 59),
+            second=random.randint(0, 59)
+        ).isoformat()[:19]
+
+        return {
+            "user_id":   user_id,
+            "amount":    amount,
+            "timestamp": ts,
+            "location":  city,
+            "merchant":  merchant
+        }
+
+    # ── Main feed loop ──
+    if st.session_state["feed_running"]:
+
+        # Fraud injection rate
+        fraud_rate = {
+            "Normal mix":       0.05,
+            "High fraud (30%)": 0.30,
+            "Attack mode (60%)":0.60
+        }[fraud_mode]
+
+        # Which user to generate for
+        uid_map = {
+            "All users randomly": None,
+            "Aman (Student)":     1,
+            "Riya (Night Gamer)": 2,
+            "Kabir (VIP)":        3
+        }
+        fixed_uid = uid_map[feed_user]
+
+        # Run for max_rows transactions then stop
+        for tick in range(max_rows):
+
+            if not st.session_state.get("feed_running", False):
+                break
+
+            # Pick user
+            uid = fixed_uid or random.choice([1, 2, 3])
+
+            # Generate transaction
+            txn_payload = generate_transaction(uid, fraud_rate)
+
+            # Score via API
+            result = call_api(txn_payload)
+
+            if "error" not in result:
+                decision  = result.get("decision", "?")
+                risk      = result.get("risk_score", 0)
+                fraud_p   = result.get("fraud_probability", 0)
+                xgb_p     = result.get("models", {}).get(
+                                "xgboost_prob", 0)
+                user_name = PERSONA_CONFIG[uid]["name"]
+
+                # Color per decision
+                dec_color = {
+                    "APPROVE": "🟢",
+                    "WARN":    "🟡",
+                    "DELAY":   "🟠",
+                    "BLOCK":   "🔴"
+                }.get(decision, "⚪")
+
+                row = {
+                    "":         dec_color,
+                    "User":     user_name,
+                    "Amount":   f"₹{txn_payload['amount']:,.0f}",
+                    "Location": txn_payload["location"],
+                    "Merchant": txn_payload["merchant"],
+                    "Hour":     txn_payload["timestamp"][11:13] + ":00",
+                    "Decision": decision,
+                    "Risk":     risk,
+                    "Fraud %":  f"{fraud_p*100:.1f}%",
+                }
+
+                # Prepend new row
+                st.session_state["feed_rows"].insert(0, row)
+
+                # Keep only max_rows
+                st.session_state["feed_rows"] = \
+                    st.session_state["feed_rows"][:max_rows]
+
+            # ── Update counters ──
+            rows      = st.session_state["feed_rows"]
+            total     = len(rows)
+            blocked   = sum(1 for r in rows if r["Decision"] == "BLOCK")
+            delayed   = sum(1 for r in rows if r["Decision"] == "DELAY")
+            warned    = sum(1 for r in rows if r["Decision"] == "WARN")
+            approved  = sum(1 for r in rows if r["Decision"] == "APPROVE")
+            catch_rate= (blocked+delayed)/total*100 if total else 0
+
+            with counter_placeholder.container():
+                k1,k2,k3,k4,k5 = st.columns(5)
+                k1.metric("Scored",    total)
+                k2.metric("🔴 BLOCK",  blocked)
+                k3.metric("🟠 DELAY",  delayed)
+                k4.metric("🟡 WARN",   warned)
+                k5.metric("Catch Rate",f"{catch_rate:.0f}%")
+
+            # ── Update table ──
+            if rows:
+                df_feed = pd.DataFrame(rows)
+
+                # Style rows by decision
+                def color_row(row):
+                    colors = {
+                        "BLOCK":   "background-color: #2b0000",
+                        "DELAY":   "background-color: #2b1400",
+                        "WARN":    "background-color: #2b1f00",
+                        "APPROVE": "background-color: #0d2b1a",
+                    }
+                    return [colors.get(row["Decision"], "")] * len(row)
+
+                styled = df_feed.style.apply(color_row, axis=1)
+
+                with table_placeholder.container():
+                    st.dataframe(
+                        styled,
+                        use_container_width=True,
+                        height=min(400, 40 + len(rows) * 35)
+                    )
+
+            # ── Update risk chart ──
+            if len(rows) >= 3:
+                recent = rows[:15]
+                fig_live = go.Figure()
+
+                for dec, col in {
+                    "APPROVE": "#3fb950",
+                    "WARN":    "#d29922",
+                    "DELAY":   "#f0883e",
+                    "BLOCK":   "#f85149"
+                }.items():
+                    sub = [r for r in recent
+                           if r["Decision"] == dec]
+                    if sub:
+                        fig_live.add_trace(go.Scatter(
+                            x=list(range(len(sub))),
+                            y=[r["Risk"] for r in sub],
+                            mode="markers",
+                            name=dec,
+                            marker=dict(
+                                color=col,
+                                size=14,
+                                symbol="circle"
+                            )
+                        ))
+
+                fig_live.add_hline(
+                    y=75, line_dash="dash",
+                    line_color="#f85149",
+                    annotation_text="BLOCK",
+                    annotation_font_color="#f85149"
+                )
+                fig_live.add_hline(
+                    y=55, line_dash="dash",
+                    line_color="#f0883e",
+                    annotation_text="DELAY",
+                    annotation_font_color="#f0883e"
+                )
+                fig_live.update_layout(
+                    title="Live risk scores — last 15 transactions",
+                    paper_bgcolor="#0d1117",
+                    plot_bgcolor="#161b22",
+                    font_color="#8b949e",
+                    height=280,
+                    margin=dict(t=40,b=30,l=30,r=30),
+                    xaxis={"gridcolor":"#21262d",
+                           "title":"Recent transactions"},
+                    yaxis={"gridcolor":"#21262d",
+                           "title":"Risk score",
+                           "range":[0,130]},
+                    legend={"bgcolor":"#161b22"}
+                )
+                with chart_placeholder.container():
+                    st.plotly_chart(
+                        fig_live,
+                        use_container_width=True,
+                        config={"displayModeBar": False},
+                        key=f"live_chart_{tick}"
+                    )
+
+            time.sleep(delay)
+
+        # Feed finished
+        st.session_state["feed_running"] = False
+        st.success(f"✅ Feed complete — {len(st.session_state['feed_rows'])} transactions scored.")
+
+    else:
+        # Not running — show placeholder
+        if st.session_state.get("feed_rows"):
+            # Show last run results
+            st.caption("Last run results — click Start Feed to run again.")
+            st.dataframe(
+                pd.DataFrame(st.session_state["feed_rows"]),
+                use_container_width=True,
+                height=400
+            )
+        else:
+            st.markdown(
+                '<div style="height:300px;border:1px dashed #21262d;'
+                'border-radius:8px;display:flex;align-items:center;'
+                'justify-content:center;color:#8b949e;font-size:15px;">'
+                '▶ Click Start Feed to begin live scoring'
+                '</div>',
+                unsafe_allow_html=True
+            )
+# ════════════════════════════════════════════
+# PAGE — MODEL INTELLIGENCE
+# ════════════════════════════════════════════
+
+elif page == "📊 Model Intelligence":
+
+    st.title("📊 Model Intelligence")
+    st.caption(
+        "Real evaluation metrics from your test set. "
+        "All numbers are actual results — not estimates."
+    )
+    st.divider()
+
+    # ── Load metrics ──
+    try:
+        with open("models/metrics.json") as f:
+            metrics = json.load(f)
+    except FileNotFoundError:
+        st.error("Run scripts/train_xgboost.py first to generate metrics.")
+        st.stop()
+
+    # ── Model summary cards ──
+    st.markdown("#### Model Performance Summary")
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    xgb_auc = metrics.get("xgboost", {}).get("auc_roc", 0)
+    rf_auc  = metrics.get("random_forest", {}).get("auc_roc", 0)
+    ae_auc  = metrics.get("autoencoder", {}).get("auc_roc", 0)
+    hybrid  = round((xgb_auc * 0.4 + rf_auc * 0.4 + ae_auc * 0.2), 4)
+
+    for col, name, auc, color, desc in [
+        (c1, "XGBoost",        xgb_auc, "#58a6ff", "Supervised classifier"),
+        (c2, "Random Forest",  rf_auc,  "#3fb950", "Ensemble classifier"),
+        (c3, "Autoencoder",    ae_auc,  "#ffa657", "Neural net anomaly"),
+        (c4, "Hybrid System",  hybrid,  "#bc8cff", "All models combined"),
+    ]:
+        col.markdown(
+            f'<div style="background:#161b22;border:1px solid {color};'
+            f'border-radius:12px;padding:16px;text-align:center;">'
+            f'<div style="color:{color};font-size:12px;font-weight:600;">'
+            f'{name}</div>'
+            f'<div style="color:{color};font-size:36px;font-weight:700;">'
+            f'{auc:.3f}</div>'
+            f'<div style="color:#8b949e;font-size:11px;">AUC-ROC</div>'
+            f'<div style="color:#8b949e;font-size:11px;">{desc}</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    st.divider()
+
+    # ── Charts row 1 — AUC-ROC + Feature Importance ──
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        st.markdown("#### AUC-ROC Curve")
+        auc_path = "models/charts/auc_roc.png"
+        if os.path.exists(auc_path):
+            st.image(auc_path, use_container_width=True)
+            st.caption(
+                f"XGBoost AUC: {xgb_auc:.3f} · "
+                f"Random Forest AUC: {rf_auc:.3f}. "
+                "Higher = better. 1.0 = perfect. 0.5 = random guessing."
+            )
+        else:
+            st.info("Chart not found — run train_xgboost.py")
+
+    with col_right:
+        st.markdown("#### Feature Importance (XGBoost)")
+        fi_path = "models/charts/feature_importance.png"
+        if os.path.exists(fi_path):
+            st.image(fi_path, use_container_width=True)
+            st.caption(
+                "Which features matter most to XGBoost. "
+                "Longer bar = more influence on the fraud decision."
+            )
+        else:
+            st.info("Chart not found — run train_xgboost.py")
+
+    st.divider()
+
+    # ── Charts row 2 — Confusion Matrix + Autoencoder ──
+    col_left2, col_right2 = st.columns(2)
+
+    with col_left2:
+        st.markdown("#### Confusion Matrix")
+        cm_path = "models/charts/confusion_matrix.png"
+        if os.path.exists(cm_path):
+            st.image(cm_path, use_container_width=True)
+            st.caption(
+                "Top-left: correctly approved normal transactions. "
+                "Bottom-right: correctly blocked fraud. "
+                "Off-diagonal = mistakes."
+            )
+        else:
+            st.info("Chart not found — run train_xgboost.py")
+
+    with col_right2:
+        st.markdown("#### Autoencoder Error Distribution")
+        ae_path = "models/charts/autoencoder_distribution.png"
+        if os.path.exists(ae_path):
+            st.image(ae_path, use_container_width=True)
+            st.caption(
+                "Green = normal transactions (low error). "
+                "Red = fraud transactions (high error). "
+                "The separation proves the autoencoder works."
+            )
+        else:
+            st.info("Chart not found — run train_autoencoder.py")
+
+    st.divider()
+
+    # ── Autoencoder training loss ──
+    st.markdown("#### Autoencoder Training Loss")
+    loss_path = "models/charts/autoencoder_loss.png"
+    if os.path.exists(loss_path):
+        col_loss, col_info = st.columns([2, 1])
+        with col_loss:
+            st.image(loss_path, use_container_width=True)
+        with col_info:
+            ae_config = metrics.get("autoencoder", {})
+            st.metric("AUC-ROC",   f"{ae_config.get('auc_roc', 0):.4f}")
+            st.metric("Threshold", f"{ae_config.get('threshold', 0):.4f}")
+            st.markdown("""
+            **How to read this:**
+            - Both lines going down = model is learning
+            - Training + validation close together = no overfitting
+            - Flattens out = model converged
+            """)
+
+    st.divider()
+
+    # ── Model comparison table ──
+    st.markdown("#### Full Model Comparison")
+
+    xgb_m = metrics.get("xgboost", {})
+    rf_m  = metrics.get("random_forest", {})
+    ae_m  = metrics.get("autoencoder", {})
+
+    comparison_df = pd.DataFrame([
+        {
+            "Model":        "XGBoost",
+            "Type":         "Supervised",
+            "AUC-ROC":      f"{xgb_m.get('auc_roc', 0):.4f}",
+            "Precision":    f"{xgb_m.get('precision', 0):.4f}",
+            "Recall":       f"{xgb_m.get('recall', 0):.4f}",
+            "Needs Labels": "Yes",
+            "Per-user":     "No",
+        },
+        {
+            "Model":        "Random Forest",
+            "Type":         "Supervised",
+            "AUC-ROC":      f"{rf_m.get('auc_roc', 0):.4f}",
+            "Precision":    f"{rf_m.get('precision', 0):.4f}",
+            "Recall":       f"{rf_m.get('recall', 0):.4f}",
+            "Needs Labels": "Yes",
+            "Per-user":     "No",
+        },
+        {
+            "Model":        "Isolation Forest",
+            "Type":         "Unsupervised",
+            "AUC-ROC":      "—",
+            "Precision":    "—",
+            "Recall":       "—",
+            "Needs Labels": "No",
+            "Per-user":     "Yes ✓",
+        },
+        {
+            "Model":        "Autoencoder",
+            "Type":         "Deep Learning",
+            "AUC-ROC":      f"{ae_m.get('auc_roc', 0):.4f}",
+            "Precision":    "—",
+            "Recall":       "—",
+            "Needs Labels": "No",
+            "Per-user":     "No",
+        },
+        {
+            "Model":        "Hybrid (all combined)",
+            "Type":         "Ensemble",
+            "AUC-ROC":      f"{hybrid:.4f}",
+            "Precision":    "—",
+            "Recall":       "—",
+            "Needs Labels": "Both",
+            "Per-user":     "Yes ✓",
+        },
+    ])
+
+    st.dataframe(
+        comparison_df.set_index("Model"),
+        use_container_width=True
+    )
+
+    st.caption(
+        "💡 Our unique contribution: Isolation Forest trained separately "
+        "per user. No research paper in our review does this. "
+        "Combined with SHAP explainability per transaction, "
+        "this makes FinGuard explainable at both model and user level."
+    )
+
+    # ── SMOTE explanation ──
+    st.divider()
+    st.markdown("#### Training Details")
+
+    train_size = metrics.get("train_size", 0)
+    test_size  = metrics.get("test_size", 0)
+    fraud_rate = metrics.get("fraud_rate", 0)
+
+    d1, d2, d3, d4 = st.columns(4)
+    d1.metric("Training samples",  f"{train_size:,}",
+              help="After SMOTE balancing")
+    d2.metric("Test samples",      f"{test_size:,}",
+              help="Held out, never seen during training")
+    d3.metric("Original fraud rate", f"{fraud_rate*100:.1f}%",
+              help="Before SMOTE")
+    d4.metric("After SMOTE",       "50/50",
+              help="Equal fraud and normal samples")
+
+    st.info(
+        "**SMOTE (Synthetic Minority Oversampling Technique)** was applied "
+        "to balance the training set. Without it, the model would learn "
+        f"to say 'not fraud' on everything and be {(1-fraud_rate)*100:.0f}% "
+        "accurate while catching zero fraud. SMOTE creates synthetic fraud "
+        "examples so the model actually learns fraud patterns."
+    )

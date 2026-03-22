@@ -1,0 +1,30 @@
+{
+  "xgboost": {
+    "auc_roc": 0.937,
+    "precision": 0.72,
+    "recall": 0.75
+  },
+  "random_forest": {
+    "auc_roc": 0.9605,
+    "precision": 0.6923,
+    "recall": 0.75
+  },
+  "features": [
+    "amount",
+    "hour",
+    "time_since_last_txn",
+    "amount_vs_avg",
+    "is_unknown_location",
+    "is_unknown_merchant",
+    "is_night",
+    "is_rapid"
+  ],
+  "train_size": 3326,
+  "test_size": 440,
+  "fraud_rate": 0.055,
+  "autoencoder": {
+    "auc_roc": 0.9258,
+    "threshold": 0.198522,
+    "type": "reconstruction_error"
+  }
+}
