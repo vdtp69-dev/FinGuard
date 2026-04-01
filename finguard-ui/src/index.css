@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-primary font-sans m-0 p-0;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #21262d;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
+/* App layout */
+.app-container {
+  @apply flex min-h-screen bg-background;
+}
+
+.main-content {
+  @apply ml-60 flex-1 p-6 transition-all duration-300;
+}
+
+/* Global Card styling - No drop shadows! */
+.card-finguard {
+  @apply bg-surface border border-border rounded-xl p-5;
+  box-shadow: none !important;
+}
+
+.chart-finguard {
+  @apply bg-surface;
+}

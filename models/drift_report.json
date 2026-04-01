@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-03-26T16:48:46.232051",
+  "features": {
+    "amount": {
+      "p_value": 1.5854099091773647e-08,
+      "statistic": 0.1511749049429658,
+      "has_drift": true,
+      "train_mean": 22338.324016159695,
+      "recent_mean": 53797.15708
+    },
+    "hour": {
+      "p_value": 1.519979528887579e-08,
+      "statistic": 0.15134600760456274,
+      "has_drift": true,
+      "train_mean": 11.619296577946768,
+      "recent_mean": 10.774
+    },
+    "time_since_last_txn": {
+      "p_value": 1.1025221123055834e-67,
+      "statistic": 0.4293878326996198,
+      "has_drift": true,
+      "train_mean": 7171.056558935361,
+      "recent_mean": 3719.8554056939993
+    },
+    "amount_vs_avg": {
+      "p_value": 2.8393959128122336e-25,
+      "statistic": 0.26391634980988593,
+      "has_drift": true,
+      "train_mean": 0.990237541553425,
+      "recent_mean": 10.324705346956806
+    },
+    "is_unknown_location": {
+      "p_value": 0.0027915724858152227,
+      "statistic": 0.08968060836501901,
+      "has_drift": true,
+      "train_mean": 0.03231939163498099,
+      "recent_mean": 0.122
+    },
+    "is_unknown_merchant": {
+      "p_value": 2.1906914186270407e-06,
+      "statistic": 0.12968060836501902,
+      "has_drift": true,
+      "train_mean": 0.03231939163498099,
+      "recent_mean": 0.162
+    },
+    "is_night": {
+      "p_value": 5.957235958359005e-18,
+      "statistic": 0.2220152091254753,
+      "has_drift": true,
+      "train_mean": 0.30798479087452474,
+      "recent_mean": 0.53
+    },
+    "is_rapid": {
+      "p_value": 1.5793930232595665e-35,
+      "statistic": 0.31288973384030416,
+      "has_drift": true,
+      "train_mean": 0.017110266159695818,
+      "recent_mean": 0.33
+    }
+  },
+  "overall_drift": true
+}

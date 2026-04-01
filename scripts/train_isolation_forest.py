@@ -4,7 +4,7 @@ from sklearn.ensemble import IsolationForest
 import joblib
 
 # 1️⃣ Connect to DB
-conn = sqlite3.connect("finguard.db")
+conn = sqlite3.connect("data/finguard.db")
 
 # 2️⃣ Load transactions
 df = pd.read_sql_query("SELECT * FROM transactions", conn)

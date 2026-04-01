@@ -1,7 +1,23 @@
 # risk/risk_engine.py — updated to include fraud_probability
 
-def calculate_risk(amount, hour, time_gap, anomaly, 
-                   anomaly_score, user_avg, fraud_prob=0.0):
+def calculate_risk(
+    amount,
+    hour,
+    time_gap,
+    anomaly,
+    anomaly_score,
+    user_avg,
+    fraud_prob=0.0,
+    # Extra ML-derived context (so the demo trajectory changes with location/merchant).
+    is_unknown_location=0,
+    is_unknown_merchant=0,
+    device_trust_score=1.0,
+    merchant_risk_score=0.0,
+):
+
+    import math
+    if fraud_prob is None or math.isnan(fraud_prob):
+        fraud_prob = 0.0
 
     risk = 0
     reasons = []
@@ -22,6 +38,33 @@ def calculate_risk(amount, hour, time_gap, anomaly,
     elif fraud_prob > 0.4:
         risk += 20
         reasons.append(f"XGBoost moderate fraud probability ({fraud_prob:.0%})")
+
+    # ── Context signals (explicit) ──
+    # These are derived from the same features used by the ML models, but we
+    # include them here so the "location" dropdown visibly affects outcomes.
+    if is_unknown_location == 1:
+        risk += 18
+        reasons.append("Unknown / unusual location context")
+
+    if is_unknown_merchant == 1:
+        risk += 12
+        reasons.append("Unknown / unusual merchant context")
+
+    if device_trust_score is not None:
+        try:
+            if float(device_trust_score) < 0.5:
+                risk += 10
+                reasons.append(f"Low device trust score ({float(device_trust_score):.2f})")
+        except Exception:
+            pass
+
+    if merchant_risk_score is not None:
+        try:
+            if float(merchant_risk_score) > 0.6:
+                risk += 10
+                reasons.append(f"High merchant risk score ({float(merchant_risk_score):.2f})")
+        except Exception:
+            pass
 
     # ── Amount deviation ──
     if user_avg > 0:

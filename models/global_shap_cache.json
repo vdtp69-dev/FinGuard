@@ -1,0 +1,16 @@
+{
+  "global_shap": {
+    "amount": 0.453582763671875,
+    "hour": 0.39865362644195557,
+    "time_since_last_txn": 0.9209993481636047,
+    "amount_vs_avg": 2.3558177947998047,
+    "is_unknown_location": 0.05447065085172653,
+    "is_unknown_merchant": 0.017832351848483086,
+    "is_night": 0.36789557337760925,
+    "is_rapid": 0.015201288275420666,
+    "is_round_amount": 0.005355456843972206,
+    "device_trust_score": 0.6803794503211975,
+    "merchant_risk_score": 1.1738884449005127
+  },
+  "timestamp": "2026-03-26T17:49:08.751122"
+}

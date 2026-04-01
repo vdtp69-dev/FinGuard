@@ -39,7 +39,7 @@ conn = sqlite3.connect("data/finguard.db")
 df   = pd.read_sql_query("SELECT * FROM transactions", conn)
 conn.close()
 
-df["timestamp"] = pd.to_datetime(df["timestamp"])
+df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed")
 df = df.sort_values(["user_id", "timestamp"]).reset_index(drop=True)
 
 print(f"\n✅ Loaded {len(df)} transactions")
@@ -90,6 +90,24 @@ df["is_night"] = df["hour"].apply(
 # Velocity flag
 df["is_rapid"] = (df["time_since_last_txn"] < 60).astype(int)
 
+# ── 3 NEW FEATURES ──
+# 1. is_round_amount
+df["is_round_amount"] = ((df["amount"] % 100 == 0) | (df["amount"] % 50 == 0)).astype(int)
+
+# 2. device_trust_score (simulated correlation with location/night)
+np.random.seed(42)
+base_trust = 1.0 - (df["is_unknown_location"] * 0.4) - (df["is_night"] * 0.2)
+noise = np.random.normal(0, 0.1, len(df))
+df["device_trust_score"] = (base_trust + noise).clip(0.1, 1.0)
+
+# 3. merchant_risk_score
+merchant_risks = {
+    "Swiggy": 0.2, "Zomato": 0.2, "Amazon": 0.1, "BookStore": 0.1,
+    "Steam": 0.5, "EpicGames": 0.5, "LuxuryMall": 0.8,
+    "Airline": 0.7, "Hotel": 0.6, "Flipkart": 0.2
+}
+df["merchant_risk_score"] = df["merchant"].map(merchant_risks).fillna(0.9)
+
 print("\n✅ Features engineered:")
 FEATURES = [
     "amount",
@@ -99,7 +117,10 @@ FEATURES = [
     "is_unknown_location",
     "is_unknown_merchant",
     "is_night",
-    "is_rapid"
+    "is_rapid",
+    "is_round_amount",
+    "device_trust_score",
+    "merchant_risk_score"
 ]
 for f in FEATURES:
     print(f"   • {f}")
@@ -191,18 +212,12 @@ iso_global = IsolationForest(
     contamination=0.05,
     random_state=42
 )
-iso_global.fit(X[["amount", "hour", "time_since_last_txn",
-                   "amount_vs_avg", "is_unknown_location",
-                   "is_unknown_merchant"]])
+iso_global.fit(X[FEATURES])
 joblib.dump(iso_global, "models/isolation_forest_global.pkl")
 print("✅ Global Isolation Forest saved.")
 
 # Per-user models
-iso_features = [
-    "amount", "hour", "time_since_last_txn",
-    "amount_vs_avg", "is_unknown_location",
-    "is_unknown_merchant"
-]
+iso_features = FEATURES
 
 for uid in df["user_id"].unique():
     user_df = df[df["user_id"] == uid]
@@ -337,35 +352,88 @@ plt.close()
 print("✅ Feature importance chart saved → models/charts/feature_importance.png")
 
 # ── Save metrics as JSON for dashboard ──
+from sklearn.metrics import recall_score, precision_score, f1_score
+xgb_precision = round(float(precision_score(y_test, xgb_preds, zero_division=0)), 4)
+xgb_recall = round(float(recall_score(y_test, xgb_preds, zero_division=0)), 4)
+xgb_f1 = round(float(f1_score(y_test, xgb_preds, zero_division=0)), 4)
+rf_precision = round(float(precision_score(y_test, rf_preds, zero_division=0)), 4)
+rf_recall = round(float(recall_score(y_test, rf_preds, zero_division=0)), 4)
+
+cm = confusion_matrix(y_test, xgb_preds)
+tn, fp, fn, tp = cm.ravel()
+xgb_fpr = round(float(fp / (fp + tn)), 4)
+
+fpr_xgb_arr, tpr_xgb_arr, _ = roc_curve(y_test, xgb_proba)
+fpr_rf_arr, tpr_rf_arr, _ = roc_curve(y_test, rf_proba)
+
+# sample max 50 points to keep json small
+def reduce_points(f_arr, t_arr, n=50):
+    if len(f_arr) <= n:
+        return [{"fpr": round(float(f), 4), "tpr": round(float(t), 4)} for f, t in zip(f_arr, t_arr)]
+    idx = np.linspace(0, len(f_arr)-1, n, dtype=int)
+    return [{"fpr": round(float(f_arr[i]), 4), "tpr": round(float(t_arr[i]), 4)} for i in idx]
+
 metrics = {
     "xgboost": {
         "auc_roc":   round(xgb_auc, 4),
-        "precision": round(float(
-            (xgb_preds[y_test==1] == 1).sum() /
-            (xgb_preds==1).sum() if (xgb_preds==1).sum() > 0 else 0), 4),
-        "recall":    round(float(
-            (xgb_preds[y_test==1] == 1).sum() /
-            (y_test==1).sum()), 4),
+        "precision": xgb_precision,
+        "recall":    xgb_recall,
+        "f1_score":  xgb_f1,
     },
     "random_forest": {
         "auc_roc":   round(rf_auc, 4),
-        "precision": round(float(
-            (rf_preds[y_test==1] == 1).sum() /
-            (rf_preds==1).sum() if (rf_preds==1).sum() > 0 else 0), 4),
-        "recall":    round(float(
-            (rf_preds[y_test==1] == 1).sum() /
-            (y_test==1).sum()), 4),
+        "precision": rf_precision,
+        "recall":    rf_recall,
     },
+    "confusion_matrix": cm.tolist(),
+    "roc_curve_xgboost": reduce_points(fpr_xgb_arr, tpr_xgb_arr),
+    "roc_curve_rf": reduce_points(fpr_rf_arr, tpr_rf_arr),
+    "fpr": xgb_fpr,
+    "f1_score": xgb_f1,
     "features": FEATURES,
     "train_size": len(X_train_bal),
     "test_size":  len(X_test),
     "fraud_rate": round(float(y.mean()), 4)
 }
 
+# ── Cost Analysis ──
+test_df = df.iloc[y_test.index]
+false_positives = (xgb_preds == 1) & (y_test == 0)
+false_negatives = (xgb_preds == 0) & (y_test == 1)
+true_positives = (xgb_preds == 1) & (y_test == 1)
+
+cost_per_review = 50
+fp_cost = false_positives.sum() * cost_per_review
+fn_cost = test_df.loc[false_negatives, "amount"].sum()
+savings = test_df.loc[true_positives, "amount"].sum()
+
+metrics["cost_analysis"] = {
+    "false_positive_cost": float(fp_cost),
+    "fraud_loss": float(fn_cost),
+    "fraud_prevented": float(savings),
+    "roi": float(savings - fp_cost)
+}
+
 with open("models/metrics.json", "w") as f:
     json.dump(metrics, f, indent=2)
 
 print("✅ Metrics JSON saved → models/metrics.json")
+
+# ── Compute Global SHAP Cache ──
+import shap
+explainer = shap.TreeExplainer(xgb_model)
+sample_size = min(len(X_train_bal), 1000)
+shap_sample = X_train_bal.sample(n=sample_size, random_state=42)
+shap_vals = explainer.shap_values(shap_sample)
+mean_shap = np.abs(shap_vals).mean(axis=0)
+shap_dict = {feat: float(mean_shap[i]) for i, feat in enumerate(FEATURES)}
+from datetime import datetime
+global_shap_res = {"global_shap": shap_dict, "timestamp": datetime.now().isoformat()}
+
+with open("models/global_shap_cache.json", "w") as f:
+    json.dump(global_shap_res, f, indent=2)
+
+print("✅ Real Global SHAP cache saved → models/global_shap_cache.json")
 
 print("\n" + "=" * 50)
 print("TRAINING COMPLETE")

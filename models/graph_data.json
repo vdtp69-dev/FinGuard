@@ -1,0 +1,289 @@
+{
+  "nodes": [
+    {
+      "id": "user_1",
+      "label": "Aman",
+      "type": "user",
+      "color": "#58a6ff",
+      "size": 30,
+      "persona": "Student",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "user_2",
+      "label": "Riya",
+      "type": "user",
+      "color": "#bc8cff",
+      "size": 30,
+      "persona": "NightOwl",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "user_3",
+      "label": "Kabir",
+      "type": "user",
+      "color": "#ffa657",
+      "size": 30,
+      "persona": "VIP",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "Amazon",
+      "label": "Amazon",
+      "type": "merchant",
+      "color": "#f0883e",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "BookStore",
+      "label": "BookStore",
+      "type": "merchant",
+      "color": "#3fb950",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "EpicGames",
+      "label": "EpicGames",
+      "type": "merchant",
+      "color": "#bc8cff",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "LuxuryMall",
+      "label": "LuxuryMall",
+      "type": "merchant",
+      "color": "#ffa657",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "Steam",
+      "label": "Steam",
+      "type": "merchant",
+      "color": "#58a6ff",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "Swiggy",
+      "label": "Swiggy",
+      "type": "merchant",
+      "color": "#3fb950",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "UnknownMerchant",
+      "label": "UnknownMerchant",
+      "type": "merchant",
+      "color": "#f85149",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "Zomato",
+      "label": "Zomato",
+      "type": "merchant",
+      "color": "#f85149",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "Airline",
+      "label": "Airline",
+      "type": "merchant",
+      "color": "#d29922",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    },
+    {
+      "id": "Hotel",
+      "label": "Hotel",
+      "type": "merchant",
+      "color": "#58a6ff",
+      "size": 15,
+      "persona": "",
+      "centrality": 0.0,
+      "in_fraud_ring": true
+    }
+  ],
+  "edges": [
+    {
+      "from": "user_1",
+      "to": "Amazon",
+      "weight": 252,
+      "total": 229123.52,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_1",
+      "to": "BookStore",
+      "weight": 230,
+      "total": 75257.59,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_1",
+      "to": "EpicGames",
+      "weight": 2,
+      "total": 200.0,
+      "has_fraud": false,
+      "color": "#30363d"
+    },
+    {
+      "from": "user_1",
+      "to": "LuxuryMall",
+      "weight": 71,
+      "total": 5506567.41,
+      "has_fraud": false,
+      "color": "#30363d"
+    },
+    {
+      "from": "user_1",
+      "to": "Steam",
+      "weight": 1,
+      "total": 1500.0,
+      "has_fraud": false,
+      "color": "#30363d"
+    },
+    {
+      "from": "user_1",
+      "to": "Swiggy",
+      "weight": 236,
+      "total": 1606611.15,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_1",
+      "to": "UnknownMerchant",
+      "weight": 50,
+      "total": 2279003.27,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_1",
+      "to": "Zomato",
+      "weight": 232,
+      "total": 74433.57,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_2",
+      "to": "Amazon",
+      "weight": 199,
+      "total": 658780.15,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_2",
+      "to": "EpicGames",
+      "weight": 200,
+      "total": 631584.96,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_2",
+      "to": "Steam",
+      "weight": 201,
+      "total": 675084.58,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_2",
+      "to": "UnknownMerchant",
+      "weight": 82,
+      "total": 9887946.52,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_2",
+      "to": "Zomato",
+      "weight": 186,
+      "total": 607556.35,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_3",
+      "to": "Airline",
+      "weight": 155,
+      "total": 10102622.35,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_3",
+      "to": "Amazon",
+      "weight": 151,
+      "total": 9108910.42,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_3",
+      "to": "Hotel",
+      "weight": 152,
+      "total": 9849371.48,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_3",
+      "to": "LuxuryMall",
+      "weight": 145,
+      "total": 10041505.87,
+      "has_fraud": true,
+      "color": "#f85149"
+    },
+    {
+      "from": "user_3",
+      "to": "UnknownMerchant",
+      "weight": 14,
+      "total": 7202971.53,
+      "has_fraud": true,
+      "color": "#f85149"
+    }
+  ],
+  "stats": {
+    "nodes": 13,
+    "edges": 18,
+    "users": 3,
+    "merchants": 10,
+    "fraud_edges": 15,
+    "fraud_rings": 1,
+    "largest_ring": 13
+  }
+}
