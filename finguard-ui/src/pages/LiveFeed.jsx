@@ -43,7 +43,10 @@ export default function LiveFeed() {
     
     connect();
     return () => {
-      if (wsRef.current) wsRef.current.close();
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
       clearTimeout(reconnectTimer);
     };
   }, []);

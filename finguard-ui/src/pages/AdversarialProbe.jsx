@@ -9,6 +9,7 @@ export default function AdversarialProbe() {
   const [animatingIdx, setAnimatingIdx] = useState(0);
   const [running, setRunning] = useState(false);
   const [locations, setLocations] = useState([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -36,9 +37,22 @@ export default function AdversarialProbe() {
     setRunning(true);
     setResults(null);
     setAnimatingIdx(0);
+    setError('');
     try {
-      // Mock D string
-      const d = new Date(); d.setHours(form.hour);
+      if (!Number.isFinite(form.amount) || form.amount <= 0) {
+        throw new Error('Enter a valid amount greater than 0.');
+      }
+      if (!Number.isInteger(form.hour) || form.hour < 0 || form.hour > 23) {
+        throw new Error('Hour must be between 0 and 23.');
+      }
+      if (!form.location || !form.merchant) {
+        throw new Error('Location and merchant are required.');
+      }
+
+      // Build a stable UTC timestamp so selected hour is preserved exactly.
+      const d = new Date();
+      d.setUTCMinutes(0, 0, 0);
+      d.setUTCHours(form.hour);
       const payload = { ...form, timestamp: d.toISOString() };
       
       const res = await getAdversarialProbe(payload);
@@ -54,6 +68,7 @@ export default function AdversarialProbe() {
       
     } catch (e) {
       console.error(e);
+      setError(e?.message || 'Failed to run probe.');
     } finally {
       setRunning(false);
     }
@@ -121,6 +136,11 @@ export default function AdversarialProbe() {
                {running ? <Activity className="w-5 h-5 animate-spin"/> : <Play className="w-5 h-5"/>}
                {running ? 'Fuzzing...' : 'Init Mutation Sequence'}
              </button>
+             {error && (
+               <div className="mt-3 text-xs text-decision-block bg-decision-block/10 border border-decision-block/30 rounded p-2">
+                 {error}
+               </div>
+             )}
            </div>
            
            <div className="card-finguard p-4 bg-muted/10 border-dashed border-2 text-xs text-secondary leading-relaxed">

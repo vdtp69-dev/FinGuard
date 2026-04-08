@@ -73,8 +73,16 @@ export const getLocations = async (params = {}) => {
   return res.json();
 };
 
-export const getExplanation = async (txnId) => {
-  const res = await fetch(`${API_URL}/explain/${txnId}`);
+export const getExplanation = async (payloadOrTxnId) => {
+  const isObjectPayload = payloadOrTxnId !== null && typeof payloadOrTxnId === 'object';
+  const res = await fetch(
+    isObjectPayload ? `${API_URL}/explain_decision` : `${API_URL}/explain/${payloadOrTxnId}`,
+    {
+      method: isObjectPayload ? 'POST' : 'GET',
+      headers: isObjectPayload ? { 'Content-Type': 'application/json' } : undefined,
+      body: isObjectPayload ? JSON.stringify(payloadOrTxnId) : undefined
+    }
+  );
   if (!res.ok) throw new Error('Failed to fetch explanation');
   return res.json();
 };

@@ -19,6 +19,7 @@ import asyncio
 import time
 import logging
 import sys
+import hashlib
 sys.path.append(os.path.join(os.path.dirname(__file__), "risk"))
 from risk.risk_engine import calculate_risk
 from tensorflow import keras as tf_keras
@@ -143,7 +144,12 @@ def startup_event():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -282,10 +288,13 @@ def compute_features(txn: Transaction,
     # 3 New Features
     is_round_amount = 1 if (txn.amount % 100 == 0 or txn.amount % 50 == 0) else 0
     
-    # Device trust: simulate based on location and night behavior
-    import random
+    # Device trust: deterministic signal so repeated scoring is stable.
     base_trust = 1.0 - (is_unknown_location * 0.4) - (is_night * 0.2)
-    device_trust_score = float(np.clip(base_trust + random.gauss(0, 0.1), 0.1, 1.0))
+    stable_key = f"{txn.user_id}|{txn.location}|{txn.merchant}|{hour}"
+    digest = hashlib.md5(stable_key.encode("utf-8")).hexdigest()
+    noise_unit = int(digest[:8], 16) / 0xFFFFFFFF
+    noise = (noise_unit * 0.2) - 0.1  # [-0.1, +0.1]
+    device_trust_score = float(np.clip(base_trust + noise, 0.1, 1.0))
     
     merchant_risks = {
         "Swiggy": 0.2, "Zomato": 0.2, "Amazon": 0.1, "BookStore": 0.1,
@@ -739,6 +748,10 @@ def reload_models():
 class FlagFraudRequest(BaseModel):
     txn_id: int
 
+class ExplainDecisionRequest(BaseModel):
+    transaction: dict
+    scoring_result: dict
+
 @app.post("/flag_fraud")
 def flag_fraud(req: FlagFraudRequest):
     conn = get_db()
@@ -807,13 +820,10 @@ def get_global_shap():
     if os.path.exists(cache_path):
         with open(cache_path) as f:
             return json.load(f)
-    # Extremely basic fallback computation
-    import numpy as np
-    mean_shap = {feat: float(np.random.rand()) for feat in FEATURES}
-    res = {"global_shap": mean_shap, "timestamp": datetime.now().isoformat()}
-    with open(cache_path, "w") as f:
-        json.dump(res, f)
-    return res
+    return {
+        "status": "not_available",
+        "error": "Global SHAP cache not found. Generate cache first.",
+    }
 
 @app.get("/drift_report")
 def get_drift_report():
@@ -991,6 +1001,45 @@ def explain_txn(txn_id: int):
     except Exception as e:
         logger.error(f"Explanation failed: {e}")
         return {"error": str(e), "explanation": "Fallback rule-based explanation."}
+
+@app.post("/explain_decision")
+def explain_decision(req: ExplainDecisionRequest):
+    """
+    Build explanation from the actual /score payload and result.
+    """
+    try:
+        sys.path.append(os.path.dirname(__file__))
+        from llm.fraud_explainer import explain_fraud_decision
+
+        transaction = req.transaction or {}
+        scoring_result = req.scoring_result or {}
+        user_id = int(transaction.get("user_id", 0) or 0)
+
+        conn = get_db()
+        if user_id > 0:
+            history = pd.read_sql_query(
+                "SELECT * FROM transactions WHERE user_id=? ORDER BY timestamp DESC LIMIT 50",
+                conn,
+                params=(user_id,),
+            )
+        else:
+            history = pd.DataFrame([])
+        conn.close()
+
+        shap_result = scoring_result.get("shap_explanation", {}) or {}
+        top_reasons = shap_result.get("top_reasons", []) if isinstance(shap_result, dict) else []
+        if top_reasons:
+            scoring_result["top_shap_features"] = ", ".join([str(x) for x in top_reasons[:3]])
+
+        explanation = explain_fraud_decision(
+            scoring_result,
+            transaction,
+            history.to_dict(orient="records"),
+        )
+        return {"explanation": explanation, "provider": "local_ai_or_fallback"}
+    except Exception as e:
+        logger.error(f"Explain decision failed: {e}")
+        return {"error": str(e), "explanation": "AI explanation currently unavailable."}
 @app.get("/transactions/{user_id}")
 def get_user_transactions(user_id: int):
     conn = get_db()
@@ -1003,13 +1052,16 @@ def adversarial_probe(txn: Transaction):
     # Simulates scoring the same transaction but with different risk factors to see how it affects the score
     results = []
     
-    # Base
-    base_res = score_transaction(txn)
+    # Base (must be simulation-only; no DB/model side effects)
+    base_txn = Transaction(**txn.model_dump())
+    base_txn.is_simulation = True
+    base_res = score_transaction(base_txn)
     results.append({"step": "Base", "risk_score": base_res["risk_score"], "decision": base_res["decision"]})
     
     # Step 1: Rapid
     t1 = Transaction(**txn.model_dump())
     t1.time_gap_override = 10.0
+    t1.is_simulation = True
     res1 = score_transaction(t1)
     results.append({"step": "Rapid (10s)", "risk_score": res1["risk_score"], "decision": res1["decision"]})
     
@@ -1018,6 +1070,7 @@ def adversarial_probe(txn: Transaction):
     t2.amount = t2.amount * 0.5
     # Change velocity too, otherwise risk may stay identical across steps.
     t2.time_gap_override = 180.0
+    t2.is_simulation = True
     res2 = score_transaction(t2)
     results.append({"step": "Amount halved (3m gap)", "risk_score": res2["risk_score"], "decision": res2["decision"]})
     

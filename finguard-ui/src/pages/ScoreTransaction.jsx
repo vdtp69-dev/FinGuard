@@ -16,16 +16,29 @@ export default function ScoreTransaction() {
   const [loading, setLoading] = useState(false);
   const [explaining, setExplaining] = useState(false);
   const [expandAi, setExpandAi] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setResult(null);
     setExplanation(null);
+    setError('');
     try {
-      // Fake timestamp construction for the hour
+      if (!Number.isFinite(form.amount) || form.amount <= 0) {
+        throw new Error('Enter a valid amount greater than 0.');
+      }
+      if (!Number.isInteger(form.hour) || form.hour < 0 || form.hour > 23) {
+        throw new Error('Hour must be between 0 and 23.');
+      }
+      if (!form.location || !form.merchant) {
+        throw new Error('Location and merchant are required.');
+      }
+
+      // Build a stable UTC timestamp so selected hour is preserved exactly.
       const d = new Date();
-      d.setHours(form.hour);
+      d.setUTCMinutes(0, 0, 0);
+      d.setUTCHours(form.hour);
       const payload = {
         ...form,
         timestamp: d.toISOString(),
@@ -34,13 +47,12 @@ export default function ScoreTransaction() {
       const res = await scoreTransaction(payload);
       setResult(res);
       
-      // Auto-load Claude explanation if there's a txn_id? 
-      // We don't get txn_id easily from the response without changing API schema, 
-      // let's assume doing a fetch to explain with user_id or a mock
-      // Since it's a demo, we will call explain with a generic 1 txn_id and see
       setExplaining(true);
       try {
-        const expRes = await getExplanation(1); // Demo ID
+        const expRes = await getExplanation({
+          transaction: payload,
+          scoring_result: res
+        });
         setExplanation(expRes.explanation);
       } catch (_err) {
         console.debug('Explanation request failed:', _err);
@@ -51,6 +63,7 @@ export default function ScoreTransaction() {
       
     } catch (err) {
       console.error(err);
+      setError(err?.message || 'Failed to score transaction.');
     } finally {
       setLoading(false);
     }
@@ -114,6 +127,11 @@ export default function ScoreTransaction() {
           <h2 className="text-xl font-bold mb-4 border-b border-border pb-3">Score Transaction</h2>
           
           <form className="space-y-5" onSubmit={handleSubmit}>
+            {error && (
+              <div className="text-xs text-decision-block bg-decision-block/10 border border-decision-block/30 rounded p-2">
+                {error}
+              </div>
+            )}
             
             {/* User Details */}
             <div>
@@ -235,14 +253,14 @@ export default function ScoreTransaction() {
             <div className={`card-finguard transition-all duration-300 ${expandAi ? 'py-4' : 'py-3 cursor-pointer hover:bg-surface/80'}`} onClick={() => !expandAi && setExpandAi(true)}>
               <div className="flex justify-between items-center mb-1">
                 <div className="flex items-center gap-2 font-semibold bg-gradient-to-r from-decision-delay to-user-aman bg-clip-text text-transparent">
-                  <Brain className="w-5 h-5 text-user-aman" /> Claude AI Explanation
+                  <Brain className="w-5 h-5 text-user-aman" /> AI Explanation
                 </div>
                 {explaining ? <Activity className="w-4 h-4 animate-spin text-secondary" /> : 
                   (expandAi ? <ChevronUp className="w-5 h-5 cursor-pointer text-secondary" onClick={(e) => {e.stopPropagation(); setExpandAi(false);}} /> : <ChevronDown className="w-5 h-5 text-secondary" />)}
               </div>
               {expandAi && (
                 <div className="mt-3 text-sm text-secondary leading-relaxed bg-background p-3 rounded border border-border whitespace-pre-line">
-                  {explaining ? 'Synthesizing SHAP trees via LLM...' : explanation}
+                  {explaining ? 'Generating explanation from model signals...' : explanation}
                 </div>
               )}
             </div>

@@ -29,12 +29,15 @@ export default function Federated() {
         }
         const reader = res.body.getReader();
         const decoder = new TextDecoder("utf-8");
+        let buffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n').filter(l => l.trim().length > 0);
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
           for (let line of lines) {
+            if (!line.trim()) continue;
             try {
               const data = JSON.parse(line);
               if (data.status === 'training') {
@@ -47,6 +50,17 @@ export default function Federated() {
             } catch (parseErr) {
               console.debug('Federated stream JSON parse error:', parseErr);
             }
+          }
+        }
+        if (buffer.trim().length > 0) {
+          try {
+            const data = JSON.parse(buffer);
+            if (data.status === 'complete') {
+              setFinalRes(data);
+              setRunning(false);
+            }
+          } catch {
+            // Ignore incomplete trailing buffer.
           }
         }
       })

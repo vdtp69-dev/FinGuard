@@ -31,13 +31,13 @@ def calculate_risk(
         risk += 15
         reasons.append("Strong anomaly severity score")
 
-    # ── XGBoost signal (now included!) ──
+    # ── Ensemble model signal ──
     if fraud_prob > 0.7:
         risk += 40
-        reasons.append(f"XGBoost high fraud probability ({fraud_prob:.0%})")
+        reasons.append(f"Ensemble model high fraud probability ({fraud_prob:.0%})")
     elif fraud_prob > 0.4:
         risk += 20
-        reasons.append(f"XGBoost moderate fraud probability ({fraud_prob:.0%})")
+        reasons.append(f"Ensemble model moderate fraud probability ({fraud_prob:.0%})")
 
     # ── Context signals (explicit) ──
     # These are derived from the same features used by the ML models, but we
