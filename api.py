@@ -1,4 +1,8 @@
 # api.py — updated for 8 features + Random Forest + auto user onboarding
+import sys
+if sys.platform == "win32":
+    import platform
+    platform._wmi_query = lambda table, *keys: tuple('1' for _ in keys)
 import torch
 import torch.nn as nn
 import sqlite3
